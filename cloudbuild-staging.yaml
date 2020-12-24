@@ -1,0 +1,74 @@
+steps:
+  - id: Build and push docker image
+    name: gcr.io/cloud-builders/docker
+    entrypoint: "bash"
+    args:
+      - "-c"
+      - |-
+        docker build -t $_IMAGE_NAME:$COMMIT_SHA . -f $_DOCKERFILE_NAME
+        docker push $_IMAGE_NAME:$COMMIT_SHA
+    dir: $_DOCKERFILE_DIR
+
+  - id: Apply env variables to K8s source files
+    name: "node:15"
+    entrypoint: "yarn"
+    args:
+      [
+        "run",
+        "compile-template",
+        "$_K8S_COMMON_YAML_PATH",
+        "$_K8S_ENV_APPLIED_YAML_PATH",
+      ]
+    env:
+      - "NODE_ENV=development"
+      - "CONFIG_ENV=staging"
+      - "PORT=8081"
+
+  - id: Deploy
+    name: gcr.io/cloud-builders/gke-deploy
+    args:
+      - run
+      - "--filename=$_K8S_ENV_APPLIED_YAML_PATH"
+      - "--cluster=$_GKE_TEST_CLUSTER"
+      - "--location=$_GKE_LOCATION"
+      - "--image=$_IMAGE_NAME:$COMMIT_SHA"
+      - "--app=$_K8S_APP_NAME"
+      - "--version=$COMMIT_SHA"
+      - "--namespace=$_K8S_NAMESPACE"
+      - "--label=$_K8S_LABELS"
+      - "--annotation=$_K8S_ANNOTATIONS,gcb-build-id=$BUILD_ID"
+      - "--create-application-cr"
+      - >-
+        --links="Build
+        details=https://console.cloud.google.com/cloud-build/builds/$BUILD_ID?project=$PROJECT_ID"
+      - "--output=$_K8S_OUTPUT_PATH"
+
+images:
+  - "$_IMAGE_NAME:$COMMIT_SHA"
+options:
+  substitutionOption: ALLOW_LOOSE
+substitutions:
+  _K8S_APP_NAME: nice-rollup
+  _K8S_ANNOTATIONS: gcb-trigger-id=94058bc7-a9f2-4566-9e7e-a192b6a096b3
+  _IMAGE_NAME: gcr.io/ts-test-node/github.com/maykinayki/cloud-test
+  _GKE_LOCATION: europe-west3-a
+  _OUTPUT_BUCKET_PATH: ts-test-node_cloudbuild/deploy
+  _K8S_LABELS: ""
+  _DOCKERFILE_DIR: ""
+  _DOCKERFILE_NAME: Dockerfile
+
+  _GKE_TEST_CLUSTER: core-test
+
+  _K8S_NAMESPACE: staging
+
+  _K8S_COMMON_YAML_PATH: kubernetes/common.yaml
+  _K8S_ENV_APPLIED_YAML_PATH: kubernetes/staging-env-applied.yaml
+  _K8S_OUTPUT_PATH: output-staging
+
+# _NEW_RELEASE: boolean
+# this is defined here: https://console.cloud.google.com/cloud-build/triggers/edit/94058bc7-a9f2-4566-9e7e-a192b6a096b3?project=ts-test-node
+# deploying to staging and production step is based on this value
+
+tags:
+  - gcp-cloud-build-deploy
+  - $_K8S_APP_NAME
