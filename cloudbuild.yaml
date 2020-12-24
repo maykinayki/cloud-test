@@ -23,7 +23,7 @@ steps:
         "--allow-unauthenticated",
 
         "--set-env-vars",
-        "NODE_ENV=production"
+        "NODE_ENV=production",
       ]
 images:
   - gcr.io/ts-test-node/nice-rollup
